@@ -77,7 +77,7 @@ while cap.isOpened():
                     cv2.putText(cam_frame, classes[class_id],(int(x - w / 2), int(y - h / 2)),fontFace=cv2.FONT_HERSHEY_SIMPLEX,color=(0,255,0),fontScale=0.8,thickness=2)
 
         ''' Resize and show the images '''
-        wnd_size = (int(width / 2), int(height / 2))
+        wnd_size = (int(width / 1.5), int(height / 1.5))
         ''' Display the perspective view frame '''
         cam_frame = cv2.resize(cam_frame, wnd_size)
         cv2.imshow('cam view', cam_frame)
