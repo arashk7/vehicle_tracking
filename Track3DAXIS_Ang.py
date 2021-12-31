@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import math
+from ItemAnalysis import ItemAnalysis
 
 
 class Axis3D:
@@ -29,7 +30,7 @@ class Axis3D:
             result.append([x, y, z])
         return result
 
-    def draw_Axis(self, img, rvec, pt1, pt2, _Z):
+    def draw_Axis(self, img, rvec, pt1, pt2, _Z, ang):
 
         sizex = pt2[0] - pt1[0]
         sizey = pt2[1] - pt1[1]
@@ -39,7 +40,13 @@ class Axis3D:
         ''' Draw Axis '''
 
         ''' Set axis points '''
-        axis = np.float32([[2, 0, 0], [0, 2, 0], [0, 0, -2]]).reshape(-1, 3)
+        x1 = 2.0 * math.cos(ang) - 0.0 * math.sin(ang)
+        y1 = 2.0 * math.sin(ang) + 0.0 * math.cos(ang)
+
+        x2 = 0.0 * math.cos(ang) - 2.0 * math.sin(ang)
+        y2 = 0.0 * math.sin(ang) + 2.0 * math.cos(ang)
+
+        axis = np.float32([[x1, y1, 0], [x2, y2, 0], [0, 0, -2]]).reshape(-1, 3)
 
         ''' Set the size with vehicle '''
         axis *= (((sizex + sizey) / 2) / 150)
@@ -137,6 +144,9 @@ frame_id = 1
 ''' Initialize 3D bounding box drawer '''
 axis3d = Axis3D()
 
+''' Analysis any change on the items positions '''
+item_analysis = ItemAnalysis()
+
 ''' Video Loop '''
 while cap.isOpened():
     ''' make copy of the Google Earth view '''
@@ -187,14 +197,17 @@ while cap.isOpened():
 
             if class_id in classes.keys():  # (car, motorcycle, bus, truck)
                 ''' Drawing vehicle on Google Earth view '''
+                item_analysis.add_item(id, px1, py1)
+                rot = item_analysis.get_rot_dist(id)
 
+                print(rot)
                 cv2.circle(ge_img, (px1, py1), 10, colors[class_id], 3)
-                cv2.putText(ge_img, classes[class_id] + ' ' + str(id), (px1, py1),
+                cv2.putText(ge_img, str(rot[0]), (px1, py1),
                             fontFace=cv2.FONT_HERSHEY_SIMPLEX, color=(0, 255, 0), fontScale=0.8, thickness=2)
 
                 ''' Drawing vehicle on Perspective view '''
                 # cv2.rectangle(cam_frame, (x, y), (int(x + (w)), int(y + (h))), colors[class_id], 2)
-                axis3d.draw_Axis(cam_frame, rvecs[0], np.array([x, y]), np.array([x + w, y + h]), 30)
+                axis3d.draw_Axis(cam_frame, rvecs[0], np.array([x, y]), np.array([x + w, y + h]), 30, rot[0])
                 cv2.putText(cam_frame, classes[class_id] + ' ' + str(id), (x, y),
                             fontFace=cv2.FONT_HERSHEY_SIMPLEX, color=(0, 255, 0), fontScale=0.8, thickness=2)
 
@@ -203,6 +216,9 @@ while cap.isOpened():
                 cv2.putText(warped, classes[class_id] + ' ' + str(id), (px1, py1),
                             fontFace=cv2.FONT_HERSHEY_SIMPLEX, color=(0, 255, 0), fontScale=0.8, thickness=2)
 
+        ''' Update items' list every 10 frames '''
+        if frame_id % 10 == 0:
+            item_analysis.step()
 
         ''' Resize and show the images '''
         wnd_size = (int(width / 2), int(height / 2))
@@ -225,7 +241,7 @@ while cap.isOpened():
     ''' Press Q on keyboard to  exit '''
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
-
+cv2.waitKey(0)
 ''' When everything done, release the video capture object'''
 cap.release()
 

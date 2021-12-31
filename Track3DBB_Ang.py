@@ -1,6 +1,9 @@
+import copy
+
 import cv2
 import numpy as np
 import math
+from ItemAnalysis import ItemAnalysis
 
 
 class Axis3D:
@@ -29,39 +32,93 @@ class Axis3D:
             result.append([x, y, z])
         return result
 
-    def draw_Axis(self, img, rvec, pt1, pt2, _Z):
+    def rotate(self, origin, point, angle):
+        """
+        Rotate a point counterclockwise by a given angle around a given origin.
+        The angle should be given in radians.
+        """
+        ox, oy, oz = origin
+        px, py, pz = point
 
+        qx = ox + math.cos(angle) * (px - ox) - math.sin(angle) * (py - oy)
+        qy = oy + math.sin(angle) * (px - ox) + math.cos(angle) * (py - oy)
+        qz = pz
+        return qx, qy, qz
+
+    def draw_BB(self, img, rvec, pt1, pt2, _Z, ang):
+        ''' Size of the Boounding Box '''
         sizex = pt2[0] - pt1[0]
         sizey = pt2[1] - pt1[1]
 
-        Z = [_Z]  # 5.
-
-        ''' Draw Axis '''
-
-        ''' Set axis points '''
-        axis = np.float32([[2, 0, 0], [0, 2, 0], [0, 0, -2]]).reshape(-1, 3)
-
-        ''' Set the size with vehicle '''
-        axis *= (((sizex + sizey) / 2) / 150)
-
-        ''' Center of the Bounding Box '''
-        pt = np.int32((pt1 + pt2) / 2)
+        Z = [_Z]
 
         ''' Unproject the center point to 3D with sample Z'''
-        point_3d_axis = self.Unproject(pt,
-                                       Z,
-                                       mtx, dist)
+        point_3d = self.Unproject(pt1,
+                                  Z,
+                                  mtx, dist)
 
         ''' Set the translation vector '''
-        tvec_axis = np.array([[point_3d_axis[0][0], point_3d_axis[0][1], point_3d_axis[0][2]], ])
+        tvec = np.array([[point_3d[0][0], point_3d[0][1], point_3d[0][2]]])
+
+        ''' Set the BB size '''
+        x1 = 0
+        y1 = 0
+        x2 = 4
+        y2 = 2
+
+        ''' Bounding Box points '''
+        BB_base = np.float32([[x1, y1, 1], [x1, y2, 1], [x2, y2, 1], [x2, y1, 1],
+                              [x1, y1, 0], [x1, y2, 0], [x2, y2, 0], [x2, y1, 0]])
+
+        bb_base_center = np.average(BB_base, axis=0)
+
+        for i in range(8):
+            BB_base[i] = self.rotate(np.array([bb_base_center[0], bb_base_center[1], BB_base[i][2]]), BB_base[i], ang)
 
         ''' Project the new translation point to the 2D view '''
-        imgpts_axis, jac_axis = cv2.projectPoints(axis, rvec, tvec_axis, mtx, dist)
+        imgpts, jac = cv2.projectPoints(BB_base, rvec, tvec, mtx, dist)
 
-        ''' Draw the axis '''
-        img = cv2.line(img, pt, tuple(np.int32(imgpts_axis[0].ravel())), (255, 0, 0), 5)
-        img = cv2.line(img, pt, tuple(np.int32(imgpts_axis[1].ravel())), (0, 255, 0), 5)
-        img = cv2.line(img, pt, tuple(np.int32(imgpts_axis[2].ravel())), (0, 0, 255), 5)
+        imgpts = np.float32(imgpts).reshape(-1, 2)
+
+        ''' Set the 3D bounding Box based on 2D Bounding Box '''
+        x = pt1[0]
+        y = pt1[1]
+
+        minx = min(imgpts[:, 0])
+        miny = min(imgpts[:, 1])
+        maxx = max(imgpts[:, 0])
+        maxy = max(imgpts[:, 1])
+
+        distx = maxx - minx
+        disty = maxy - miny
+
+        scalex = sizex / distx
+        scaley = sizey / disty
+
+        imgpts[:, 0] = np.float32(imgpts[:, 0] * scalex)
+        imgpts[:, 1] = np.float32(imgpts[:, 1] * scaley)
+
+        minx = min(imgpts[:, 0])
+        miny = min(imgpts[:, 1])
+
+        stdistx = x - minx
+        stdisty = y - miny
+
+        imgpts[:, 0] += stdistx
+        imgpts[:, 1] += stdisty
+
+        imgpts_botton = np.int32([imgpts[:4]])
+        imgpts_top = np.int32([imgpts[4:]])
+
+        ''' Draw ground floor in green'''
+        img = cv2.drawContours(img, imgpts_botton, -1, (0, 255, 0), 3)
+
+        ''' Draw pillars in blue color'''
+        for i, j in zip(range(4), range(4, 8)):
+            img = cv2.line(img, tuple(np.int32(imgpts[i])), tuple(np.int32(imgpts[j])), (255), 3)
+
+        ''' Draw top layer in red color'''
+        img = cv2.drawContours(img, imgpts_top, -1, (0, 0, 255), 3)
         return img
 
 
@@ -137,6 +194,9 @@ frame_id = 1
 ''' Initialize 3D bounding box drawer '''
 axis3d = Axis3D()
 
+''' Analysis any change on the items positions '''
+item_analysis = ItemAnalysis()
+
 ''' Video Loop '''
 while cap.isOpened():
     ''' make copy of the Google Earth view '''
@@ -187,14 +247,17 @@ while cap.isOpened():
 
             if class_id in classes.keys():  # (car, motorcycle, bus, truck)
                 ''' Drawing vehicle on Google Earth view '''
+                item_analysis.add_item(id, px1, py1)
+                rot = item_analysis.get_rot_dist(id)
 
+                # print(rot)
                 cv2.circle(ge_img, (px1, py1), 10, colors[class_id], 3)
-                cv2.putText(ge_img, classes[class_id] + ' ' + str(id), (px1, py1),
+                cv2.putText(ge_img, str(rot[0]), (px1, py1),
                             fontFace=cv2.FONT_HERSHEY_SIMPLEX, color=(0, 255, 0), fontScale=0.8, thickness=2)
 
                 ''' Drawing vehicle on Perspective view '''
                 # cv2.rectangle(cam_frame, (x, y), (int(x + (w)), int(y + (h))), colors[class_id], 2)
-                axis3d.draw_Axis(cam_frame, rvecs[0], np.array([x, y]), np.array([x + w, y + h]), 30)
+                axis3d.draw_BB(cam_frame, rvecs[0], np.array([x, y]), np.array([x + w, y + h]), 30, rot[0])
                 cv2.putText(cam_frame, classes[class_id] + ' ' + str(id), (x, y),
                             fontFace=cv2.FONT_HERSHEY_SIMPLEX, color=(0, 255, 0), fontScale=0.8, thickness=2)
 
@@ -203,17 +266,20 @@ while cap.isOpened():
                 cv2.putText(warped, classes[class_id] + ' ' + str(id), (px1, py1),
                             fontFace=cv2.FONT_HERSHEY_SIMPLEX, color=(0, 255, 0), fontScale=0.8, thickness=2)
 
+        ''' Update items' list every 10 frames '''
+        if frame_id % 10 == 0:
+            item_analysis.step()
 
         ''' Resize and show the images '''
         wnd_size = (int(width / 2), int(height / 2))
 
         ''' Display the perspective view frame '''
         cam_frame = cv2.resize(cam_frame, wnd_size)
-        cv2.imshow('cam view', cam_frame)
+        cv2.imshow('cam_view', cam_frame)
 
         ''' Display the Google Earth view frame '''
         ge_img = cv2.resize(ge_img, wnd_size)
-        cv2.imshow('ge view', ge_img)
+        cv2.imshow('ge_view', ge_img)
 
         ''' Display the warped view frame '''
         warped = cv2.resize(warped, wnd_size)
@@ -226,6 +292,7 @@ while cap.isOpened():
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
+cv2.waitKey(0)
 ''' When everything done, release the video capture object'''
 cap.release()
 
