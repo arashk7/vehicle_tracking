@@ -46,6 +46,8 @@ class Axis3D:
         return qx, qy, qz
 
     def draw_BB(self, img, rvec, pt1, pt2, _Z, ang):
+        pt1 = pt1 - [0, 0]
+        pt2 = pt2 + [0, 0]
         ''' Size of the Boounding Box '''
         sizex = pt2[0] - pt1[0]
         sizey = pt2[1] - pt1[1]
