@@ -122,7 +122,7 @@ while cap.isOpened():
         frame_id += 1
 
     ''' Press Q on keyboard to  exit '''
-    if cv2.waitKey(25) & 0xFF == ord('q'):
+    if cv2.waitKey(5) & 0xFF == ord('q'):
         break
 
 ''' When everything done, release the video capture object'''

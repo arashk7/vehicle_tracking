@@ -45,7 +45,7 @@ while cap.isOpened():
             w = float(splite_line[3]) * width
             h = float(splite_line[4]) * height
             size = int((w + h) / 7)
-            conf = float(splite_line[5])
+            # conf = float(splite_line[5])
 
             ''' Transform the position of the vehicle '''
             p1 = cv2.perspectiveTransform(np.array([[[x,y]]]),H).ravel()
@@ -91,7 +91,7 @@ while cap.isOpened():
         frame_counter += 1
 
     ''' Press Q on keyboard to  exit'''
-    if cv2.waitKey(25) & 0xFF == ord('q'):
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
 ''' When everything done, release the video capture object '''
